@@ -1,0 +1,68 @@
+\begin{thebibliography}{10}
+
+\bibitem{blundell2015weight}
+Charles Blundell, Julian Cornebise, Koray Kavukcuoglu, and Daan Wierstra.
+\newblock Weight uncertainty in neural networks.
+\newblock In {\em International Conference on Machine Learning (ICML)}, pages
+  1613--1622, 2015.
+
+\bibitem{gal2016dropout}
+Yarin Gal and Zoubin Ghahramani.
+\newblock Dropout as a bayesian approximation: Representing model uncertainty
+  in deep learning.
+\newblock In {\em International Conference on Machine Learning (ICML)}, pages
+  1050--1059, 2016.
+
+\bibitem{gal2017deep}
+Yarin Gal, Riashat Islam, and Zoubin Ghahramani.
+\newblock Deep bayesian active learning with image data.
+\newblock In {\em International Conference on Machine Learning (ICML)}, pages
+  1183--1192, 2017.
+
+\bibitem{joshi2009multi}
+Amitabh~J. Joshi, Fatih Porikli, and Nikos Papanikolopoulos.
+\newblock Multi-class active learning for image classification.
+\newblock In {\em IEEE Conference on Computer Vision and Pattern Recognition
+  (CVPR)}, pages 2372--2379, 2009.
+
+\bibitem{kirsch2019batchbald}
+Andrew Kirsch, Jiri Hron, J{\"u}rgen van Amersfoort, and Yarin Gal.
+\newblock Batchbald: Efficient and diverse batch acquisition for deep bayesian
+  active learning.
+\newblock In {\em Advances in Neural Information Processing Systems (NeurIPS)},
+  pages 7024--7035, 2019.
+
+\bibitem{lakshminarayanan2017simple}
+Balaji Lakshminarayanan, Alexander Pritzel, and Charles Blundell.
+\newblock Simple and scalable predictive uncertainty estimation using deep
+  ensembles.
+\newblock In {\em Advances in Neural Information Processing Systems (NeurIPS)},
+  pages 6402--6413, 2017.
+
+\bibitem{maddox2019simple}
+William~J. Maddox, Pavel Izmailov, Timur Garipov, Dmitry~P. Vetrov, and
+  Andrew~Gordon Wilson.
+\newblock A simple baseline for bayesian uncertainty in deep learning.
+\newblock In {\em Advances in Neural Information Processing Systems (NeurIPS)},
+  pages 13132--13143, 2019.
+
+\bibitem{settles2012active}
+Burr Settles.
+\newblock {\em Active Learning}.
+\newblock Synthesis Lectures on Artificial Intelligence and Machine Learning.
+  Morgan \& Claypool Publishers, 2012.
+
+\bibitem{welling2011bayesian}
+Max Welling and Yee~Whye Teh.
+\newblock Bayesian learning via stochastic gradient langevin dynamics.
+\newblock In {\em International Conference on Machine Learning (ICML)}, pages
+  681--688, 2011.
+
+\bibitem{zhu2003combining}
+Xiaojin Zhu, John Lafferty, and Zoubin Ghahramani.
+\newblock Combining active learning and semi-supervised learning using gaussian
+  fields and harmonic functions.
+\newblock In {\em ICML Workshop on The Continuum from Labeled to Unlabeled
+  Data}, 2003.
+
+\end{thebibliography}

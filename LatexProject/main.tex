@@ -1,0 +1,330 @@
+\documentclass{article}
+
+% Ready for submission
+\usepackage[final]{neurips_2023}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+\usepackage{graphicx}       % for figures
+\usepackage{amsmath}        % for math
+\usepackage{amssymb}        % for math symbols
+\usepackage{caption}        % for figure captions
+\usepackage{subcaption}     % for subfigures
+
+\title{Reproducing and Extending Deep Bayesian Active Learning with Image Data}
+
+\author{
+  Candidate number 1727159 \\
+  Department of Computer Science \\
+  University of Oxford \\
+  Oxford, United Kingdom \\
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Active learning is a prominent approach to reduce the labeling cost by selectively selecting the most informative data points to annotate. This paper reproduces the core experiments of Gal et al. \citep{gal2017deep}, which introduced Bayesian convolutional neural networks (BCNNs) with Monte Carlo dropout for active learning on image data. We successfully replicate their findings on MNISsT, demonstrating that acquisition functions such as BALD, Variation Ratios, and Max Entropy outperform random sampling. We then extend the work in two directions: (1) a \textit{minimal extension} comparing three Bayesian inference methods for the last layer of a frozen CNN in a regression setting, and (2) a \textit{novel extension} introducing heteroscedastic noise modeling to separate aleatoric and epistemic uncertainty during acquisition. Our experiments show that diagonal mean-field variational inference performs comparably to analytic inference, while full-covariance variational inference struggles. The heteroscedastic noise modeling effectively separates aleatoric and epistemic uncertainties during the acquisition stage. Code is available at: \url{https://github.com/gregsters/reproducing_DL#}.
+\end{abstract}
+
+\section{Introduction}
+Obtaining labeled data is a major bottleneck in machine learning, especially in domains like medical imaging where expert annotation is costly and time-consuming. Active learning (AL) solves this problem by selectively selecting the most informative (unlabeled) samples for human annotation, thereby reducing the total annotation effort required to reach the desired performance level. Despite its promise, active learning scaling to high dimensions image data has been problematic, due to the difficulty in modelling model uncertainty in deep learning models.
+In their paper Gal et al. (2016), they have introduced Bayesian deep learning (that is, Monte Carlo dropout as one practical approximation), into the active learning framework.
+
+In this work, we first reproduce the core experiments of the original paper (Sections 5.1–5.2), verifying the effectiveness of Bayesian CNNs and various acquisition functions. We then propose two extensions that align with and expand upon the course's Bayesian deep learning themes:  
+1. \textbf{Minimal Extension:} We reformulate the classification task as regression and compare three Bayesian inference methods for the last layer of a frozen CNN: analytic Gaussian inference, mean-field variational inference (MFVI) with diagonal covariance, and MFVI with full covariance.  
+2. \textbf{Novel Extension:}  We introduce a heteroscedastic last-layer model that separately captures aleatoric (data) and epistemic (model) uncertainty, giving rise to more sophisticated acquisition decisions.
+These extensions not only test the robustness of the original framework but also explore more expressive uncertainty representations, a key concern in real-world applications like medical diagnosis where understanding uncertainty sources is critical.
+
+\section{Background}
+Active learning has a long history in machine learning \citep{settles2012active}, with acquisition functions often relying on model uncertainty. Traditional methods like Gaussian processes (GPs) and support vector machines (SVMs) have been used with kernel tricks for image data \citep{joshi2009multi, zhu2003combining}, but they struggle with high-dimensional inputs and lack the representational power of deep learning.
+
+Deep learning models, in particular convolutional neural networks (CNNs), are well suited for image tasks but can be very data intensive, and thus typically do not naturally represent uncertainty. Bayesian deep learning attempts to bridge this gap by placing distributions over weights, allowing uncertainty to be quantified. Practical approximations include Monte Carlo dropout \citep{gal2016dropout}, stochastic gradient Markov chain Monte Carlo \citep{welling2011bayesian}, and variational approaches for weight uncertainty \citep{blundell2015weight}.
+
+Gal et al.~\citep{gal2017deep} combined dropout-based Bayesian CNNs with acquisition functions motivated by information-theoretic criteria (e. g. BALD) and demonstrated that model uncertainty can be used to guide efficient data acquisition of images. Slightly more recent work investigates alternative approximation and baselines \citep{maddox2019simple}, ensemble-based uncertainty \citep{lakshminarayanan2017simple}, and diverse batch acquisition strategies \citep{kirsch2019batchbald}. Our work builds on these efforts by investigating different Bayesian inference schemes and introducing heteroscedastic modeling for uncertainty decomposition.
+
+
+\section{Methodology}
+
+\subsection{Original Paper: Bayesian CNNs with MC Dropout}
+The original paper uses a CNN with dropout applied before every weight layer. At test time, dropout is retained to perform $T$ stochastic forward passes, yielding a sample-based approximation of the predictive distribution:
+\[
+p(y|\mathbf{x}, \mathcal{D}_{\text{train}}) \approx \frac{1}{T} \sum_{t=1}^T p(y|\mathbf{x}, \widehat{\boldsymbol{\omega}}_t),
+\]
+where $\widehat{\boldsymbol{\omega}}_t$ are masked weights. This Monte Carlo dropout (MC dropout) approximates Bayesian inference and provides uncertainty estimates used by acquisition functions such as predictive entropy, BALD, and Variation Ratios.
+
+\subsection{Acquisition Functions}
+Given a pool of unlabeled data $\mathcal{D}_{\text{pool}}$, the acquisition function $a(x, \mathcal{M})$ scores each point $x$ based on the model $\mathcal{M}$. We experiment with:
+- \textbf{Max Entropy:} $\mathbb{H}[y|x, \mathcal{D}_{\text{train}}]$
+- \textbf{BALD:} $\mathbb{I}[y, \boldsymbol{\omega}|x, \mathcal{D}_{\text{train}}]$
+- \textbf{Variation Ratios:} $1 - \max_y p(y|x, \mathcal{D}_{\text{train}})$
+- \textbf{Mean STD:} Mean standard deviation of class probabilities
+- \textbf{Random:} Baseline uniform sampling
+
+\section{Minimal Extension: Bayesian Last-Layer Inference}
+We freeze the convolutional layers of a CNN pretrained on MNIST and treat the last hidden layer features $\phi(\mathbf{x}) \in \mathbb{R}^{128}$ as fixed basis functions. The last weight matrix $\mathbf{W} \in \mathbb{R}^{128 \times 10}$ is treated as a Bayesian linear regression parameter, with targets being one-hot vectors interpreted as continuous 10-dimensional outputs. We compare three inference methods:
+
+1. \textbf{Analytic Gaussian Inference (Full Covariance):} Assumes a Gaussian prior $\mathbf{W} \sim \mathcal{N}(0, \sigma_p^2 I)$ and Gaussian likelihood. The posterior is Gaussian with closed-form mean and covariance.
+2. \textbf{Mean-Field Variational Inference (Diagonal Covariance):} Approximates the posterior as a fully factorized Gaussian $q(\mathbf{W}) = \prod_{i,j} \mathcal{N}(w_{ij}; m_{ij}, s_{ij}^2)$.
+3. \textbf{Mean-Field Variational Inference (Full Covariance):} Uses a multivariate Gaussian posterior with a full covariance matrix, allowing correlations between weights.
+
+The derivation details are provided in Appendix A. Predictive variance is used as the acquisition function. We report root mean square error (RMSE) to evaluate regression performance.
+
+\section{Novel Extension: Heteroscedastic Noise Modeling}
+To separately model aleatoric and epistemic uncertainty, we extend the last-layer model to be heteroscedastic. We parameterize both the mean and log-variance of the predictive distribution:
+\[
+p(\mathbf{y}|\mathbf{x}, \mathbf{W}_{\mu}, \mathbf{W}_{\sigma}) = \mathcal{N}\big(\mathbf{y}; \mathbf{W}_{\mu}^\top \phi(\mathbf{x}), \operatorname{diag}(\exp(\mathbf{W}_{\sigma}^\top \phi(\mathbf{x})))\big),
+\]
+where $\mathbf{W}_{\mu}$ and $\mathbf{W}_{\sigma}$ have independent Gaussian variational posteriors. The total predictive variance decomposes as:
+\[
+\operatorname{Var}[\mathbf{y}|\mathbf{x}] = \underbrace{\mathbb{E}[\exp(\mathbf{W}_{\sigma}^\top \phi(\mathbf{x}))]}_{\text{aleatoric}} + \underbrace{\operatorname{Var}[\mathbf{W}_{\mu}^\top \phi(\mathbf{x})]}_{\text{epistemic}}.
+\]
+We use predictive entropy (derived from total variance) as the acquisition function, enabling the model to preferentially query points with high epistemic uncertainty (reducible with more data) over those with high aleatoric uncertainty (inherent noise).
+
+\section{Experiments}
+
+\subsection{Reproduction Results}
+We follow the original experimental setup: an initial labeled set of 20 MNIST images, validation set of 100, and pool set of the remaining training data. We run 100 acquisition steps, adding 10 images per step. The Bayesian CNN uses the architecture from the original paper (conv-conv-pool-dropout-dense-dropout-softmax). Results are good over three random seeds.
+
+\textbf{Figure 1} shows test accuracy versus number of acquired images for five acquisition functions. \textbf{Table 1} reports the number of acquisitions needed to reach 5\% and 10\% test error. Our results closely match the original paper: Variation Ratios and BALD outperform random sampling, reducing the required labels by over 50\%. Mean STD performs similarly to random.
+
+\textbf{Figure 2} compares Bayesian and deterministic CNNs for BALD, Variation Ratios, and Max Entropy. Bayesian CNNs consistently achieve higher accuracy earlier, confirming the importance of model uncertainty.
+
+\subsection{Minimal Extension Results}
+We train a frozen CNN feature extractor and apply the three Bayesian inference methods to the last layer. The regression task uses one-hot targets as continuous vectors. \textbf{Figure 3} plots RMSE versus acquired images. \textbf{Table 2} reports final RMSE after 500 acquisitions (50 steps $\times$ 10 images/step).
+
+Analytic and diagonal MFVI achieve nearly identical RMSE (~0.30), significantly outperforming a random baseline (RMSE ~0.95). Full-covariance MFVI diverges (RMSE >5), likely due to overparameterization and optimization challenges. This suggests that for this problem, the full covariance does not provide a practical advantage over the diagonal approximation.
+
+\subsection{Novel Extension Results}
+The heteroscedastic model is trained similarly, with acquisition based on predictive entropy. \textbf{Figure 4} shows the RMSE, aleatoric uncertainty, and epistemic uncertainty over acquisitions. \textbf{Table 3} reports final values.
+
+RMSE converges to ~0.31, comparable to the minimal extension methods. Epistemic uncertainty decreases steadily with acquisitions, while aleatoric uncertainty remains relatively constant, confirming that the model distinguishes between reducible and irreducible uncertainty. This decomposition can inform practitioners about the nature of model uncertainty during data collection.
+
+\section{Analysis \& Conclusions}
+We successfully reproduced the core results of Gal et al. \citep{gal2017deep}, validating that Bayesian CNNs with MC dropout enable effective active learning for image data. Our minimal extension showed that analytic and diagonal MFVI inference perform similarly for last-layer Bayesian regression, while full-covariance MFVI is unstable. The novel heteroscedastic model provides a principled uncertainty decomposition, which could be valuable in safety-critical applications.
+
+\begin{table}[htbp]
+\centering
+\caption{Number of acquired images to reach 5\% and 10\% test error on MNIST.}
+\label{tab:error}
+\begin{tabular}{lccccc}
+\toprule
+\% error & BALD & Var Ratios & Max Ent & Mean STD & Random \\
+\midrule
+10\% & 145 & 120 & 165 & 230 & 255 \\
+5\% & 335 & 295 & 355 & 695 & 835 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% Add some vertical space between tables
+\vspace{10pt}
+
+\begin{table}[htbp]
+\centering
+\caption{Minimal Extension: Final RMSE for different inference methods.}
+\label{tab:minimal}
+\begin{tabular}{lc}
+\toprule
+Inference Method & RMSE \\
+\midrule
+Analytic (Full Cov) & 0.3065 \\
+MFVI (Diagonal) & 0.3007 \\
+MFVI (Full Cov) & 5.3661 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\vspace{10pt}
+
+\begin{table}[htbp]
+\centering
+\caption{Novel Extension: Final results for heteroscedastic model.}
+\label{tab:novel}
+\begin{tabular}{lc}
+\toprule
+Metric & Value \\
+\midrule
+Final RMSE & 0.3094 \\
+Final Aleatoric & 0.5132 \\
+Final Epistemic & 0.1045 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\bibliographystyle{plain}
+\small
+\bibliography{references}
+
+\appendix
+\section*{Appendix A: Derivations for Minimal Extension}
+\subsection*{A.1 Analytic Gaussian Inference}
+Let the feature matrix be $\Phi \in \mathbb{R}^{N \times D}$, targets $Y \in \mathbb{R}^{N \times K}$, and weights $W \in \mathbb{R}^{D \times K}$. Assume prior $W \sim \mathcal{N}(0, \sigma_p^2 I)$ and likelihood $Y \sim \mathcal{N}(\Phi W, \sigma_n^2 I)$. The posterior is:
+
+\[
+p(W|\Phi, Y) = \mathcal{N}(W; \mu, \Sigma),
+\]
+\[
+\Sigma = (\sigma_n^{-2} \Phi^\top \Phi + \sigma_p^{-2} I)^{-1},
+\quad
+\mu = \sigma_n^{-2} \Sigma \Phi^\top Y.
+\]
+
+Predictive distribution for a new input $\phi_*$:
+
+\[
+p(y_*|\phi_*, \Phi, Y) = \mathcal{N}(y_*; \phi_*^\top \mu, \phi_*^\top \Sigma \phi_* + \sigma_n^2 I).
+\]
+
+\subsection*{A.2 Mean-Field Variational Inference (Diagonal)}
+We approximate the posterior with $q(W) = \prod_{i,j} \mathcal{N}(w_{ij}; m_{ij}, s_{ij}^2)$. The evidence lower bound (ELBO) is:
+
+\[
+\text{ELBO} = \mathbb{E}_{q(W)}[\log p(Y|\Phi, W)] - \text{KL}(q(W) \| p(W)).
+\]
+
+The likelihood term is Gaussian, and the KL divergence between two Gaussians has closed form. We optimize $m_{ij}, s_{ij}$ via gradient ascent.
+
+\subsection*{A.3 Mean-Field Variational Inference (Full Covariance)}
+We parameterize $q(W) = \mathcal{N}(\text{vec}(W); \mathbf{m}, \mathbf{L}\mathbf{L}^\top)$, where $\mathbf{L}$ is a lower-triangular Cholesky factor. The ELBO is similar, but the covariance matrix is full. The KL divergence involves the log-determinant of $\mathbf{L}\mathbf{L}^\top$, which is computed as $2\sum_i \log L_{ii}$.
+
+\subsection*{A.4 Heteroscedastic Noise Modeling (Novel Extension)}
+
+For the novel extension, we model both aleatoric (data) and epistemic (model) uncertainty separately. We extend the last-layer Bayesian linear regression to be heteroscedastic by parameterizing both the mean and variance of the predictive distribution.
+
+\subsubsection*{Model Specification}
+
+Let $\phi(\mathbf{x}) \in \mathbb{R}^D$ be the feature representation from the frozen CNN backbone. We define two separate weight matrices:
+\begin{itemize}
+    \item $\mathbf{W}_\mu \in \mathbb{R}^{D \times K}$ for the mean, with prior $\mathbf{W}_\mu \sim \mathcal{N}(0, \sigma_{\mu}^2 I)$
+    \item $\mathbf{W}_\sigma \in \mathbb{R}^{D \times K}$ for the log-variance, with prior $\mathbf{W}_\sigma \sim \mathcal{N}(0, \sigma_{\sigma}^2 I)$
+\end{itemize}
+
+The likelihood for a single data point is:
+\[
+p(\mathbf{y}|\mathbf{x}, \mathbf{W}_\mu, \mathbf{W}_\sigma) = \mathcal{N}\left(\mathbf{y}; \mathbf{W}_\mu^\top \phi(\mathbf{x}), \operatorname{diag}(\exp(\mathbf{W}_\sigma^\top \phi(\mathbf{x})))\right)
+\]
+where the exponential ensures positive variance.
+
+\subsubsection*{Variational Approximation}
+
+We use mean-field variational inference with diagonal Gaussian distributions:
+\[
+q(\mathbf{W}_\mu) = \prod_{i,j} \mathcal{N}(w_{\mu,ij}; m_{\mu,ij}, s_{\mu,ij}^2), \quad
+q(\mathbf{W}_\sigma) = \prod_{i,j} \mathcal{N}(w_{\sigma,ij}; m_{\sigma,ij}, s_{\sigma,ij}^2)
+\]
+
+The evidence lower bound (ELBO) decomposes as:
+\[
+\text{ELBO} = \mathbb{E}_{q(\mathbf{W}_\mu)q(\mathbf{W}_\sigma)}[\log p(\mathbf{Y}|\mathbf{X}, \mathbf{W}_\mu, \mathbf{W}_\sigma)] - \text{KL}(q(\mathbf{W}_\mu)\|p(\mathbf{W}_\mu)) - \text{KL}(q(\mathbf{W}_\sigma)\|p(\mathbf{W}_\sigma))
+\]
+
+\subsubsection*{Expected Log-Likelihood}
+
+For a dataset $\{\mathbf{x}_n, \mathbf{y}_n\}_{n=1}^N$, the expected log-likelihood term is:
+\[
+\mathbb{E}_{q}[\log p(\mathbf{Y}|\mathbf{X}, \mathbf{W}_\mu, \mathbf{W}_\sigma)] = -\frac{1}{2}\sum_{n=1}^N \sum_{k=1}^K \left[ \log(2\pi) + \mathbb{E}_{q}[(\mathbf{W}_\sigma^\top \phi(\mathbf{x}_n))_k] + \mathbb{E}_{q}\left[\frac{((\mathbf{y}_n)_k - (\mathbf{W}_\mu^\top \phi(\mathbf{x}_n))_k)^2}{\exp((\mathbf{W}_\sigma^\top \phi(\mathbf{x}_n))_k)}\right] \right]
+\]
+
+We approximate this using Monte Carlo samples from $q(\mathbf{W}_\mu)$ and $q(\mathbf{W}_\sigma)$.
+
+\subsubsection*{KL Divergence Terms}
+
+The KL divergences have closed forms since both prior and variational distributions are Gaussian:
+\[
+\text{KL}(q(\mathbf{W}_\mu)\|p(\mathbf{W}_\mu)) = \frac{1}{2}\sum_{i,j} \left[ \frac{s_{\mu,ij}^2 + m_{\mu,ij}^2}{\sigma_{\mu}^2} - 1 - \log\left(\frac{s_{\mu,ij}^2}{\sigma_{\mu}^2}\right) \right]
+\]
+and similarly for $\mathbf{W}_\sigma$.
+
+\subsubsection*{Predictive Distribution and Uncertainty Decomposition}
+
+The predictive distribution for a new input $\mathbf{x}^*$ is approximated via sampling. For each sample $t$ from $q(\mathbf{W}_\mu, \mathbf{W}_\sigma)$:
+\[
+\mathbf{y}^{*(t)} \sim \mathcal{N}\left(\mathbf{W}_\mu^{(t)\top} \phi(\mathbf{x}^*), \operatorname{diag}(\exp(\mathbf{W}_\sigma^{(t)\top} \phi(\mathbf{x}^*)))\right)
+\]
+
+The total predictive variance decomposes into aleatoric and epistemic components:
+\[
+\operatorname{Var}[\mathbf{y}^*|\mathbf{x}^*, \mathcal{D}] = \underbrace{\mathbb{E}_{q}[\exp(\mathbf{W}_\sigma^\top \phi(\mathbf{x}^*))]}_{\text{aleatoric}} + \underbrace{\operatorname{Var}_{q}[\mathbf{W}_\mu^\top \phi(\mathbf{x}^*)]}_{\text{epistemic}}
+\]
+
+\subsubsection*{Acquisition Function}
+
+We use the predictive entropy as the acquisition function:
+\[
+a(\mathbf{x}^*) = \mathbb{H}[p(\mathbf{y}^*|\mathbf{x}^*, \mathcal{D})] \approx -\sum_{c} p(y^*=c|\mathbf{x}^*, \mathcal{D}) \log p(y^*=c|\mathbf{x}^*, \mathcal{D})
+\]
+where $p(y^*=c|\mathbf{x}^*, \mathcal{D})$ is estimated via Monte Carlo sampling. This preferentially selects points where the model has high total uncertainty.
+
+\section*{Appendix B: Implementation Details}
+\subsection*{B.1 Model Architecture}
+For all experiments, we used a CNN with the following architecture:
+\begin{itemize}
+    \item Two convolutional layers with 32 filters each (4×4 kernel, ReLU activation)
+    \item Max pooling (2×2)
+    \item Dropout (p=0.25) after pooling
+    \item Fully connected layer (128 units, ReLU)
+    \item Dropout (p=0.5)
+    \item Output layer (10 units for classification, softmax; 10 outputs for regression)
+\end{itemize}
+
+\subsection*{B.2 Training Details}
+\begin{itemize}
+    \item \textbf{Optimizer:} Adam with learning rate 0.001
+    \item \textbf{Batch size:} 64 for training, 512 for pool scoring
+    \item \textbf{Weight decay:} $1 \times 10^{-4}$ (for deterministic CNN)
+    \item \textbf{Dropout rates:} 0.25 (after pooling), 0.5 (before final layer)
+    \item \textbf{MC samples:} 20 for test-time uncertainty estimation, 3 for acquisition scoring
+\end{itemize}
+
+\subsection*{B.3 Acquisition Parameters}
+\begin{itemize}
+    \item Initial labeled set: 20 images (balanced, 2 per class)
+    \item Validation set: 100 images
+    \item Pool set: Remaining training images (minus initial and validation)
+    \item Acquisition steps: 100 for reproduction, 50 for extensions
+    \item Images per acquisition: 10
+\end{itemize}
+
+\vspace{1cm}
+
+\section*{Appendix C: Figures}
+\vspace{1cm}
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.9\linewidth]{figure1_reproduction.png}
+\caption{MNIST test accuracy vs. acquired images for five acquisition functions (Bayesian CNN).}
+\label{fig:reproduction}
+\end{figure}
+
+\vspace{2cm}
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.9\linewidth]{figure2_comparison.png}
+\caption{Bayesian vs. deterministic CNN comparison for three acquisition functions.}
+\label{fig:comparison}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.9\linewidth]{minimal_comparison.png}
+\caption{RMSE vs. acquired images for three inference methods (minimal extension).}
+\label{fig:minimal}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.9\linewidth]{novel_results.png}
+\caption{Heteroscedastic model results: RMSE, aleatoric/epistemic uncertainty, uncertainty ratio, and scatter plot.}
+\label{fig:novel}
+\end{figure}
+
+\end{document}
