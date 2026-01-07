@@ -166,39 +166,178 @@ Final Epistemic & 0.1045 \\
 
 \appendix
 \section*{Appendix A: Derivations for Minimal Extension}
-\subsection*{A.1 Analytic Gaussian Inference}
-Let the feature matrix be $\Phi \in \mathbb{R}^{N \times D}$, targets $Y \in \mathbb{R}^{N \times K}$, and weights $W \in \mathbb{R}^{D \times K}$. Assume prior $W \sim \mathcal{N}(0, \sigma_p^2 I)$ and likelihood $Y \sim \mathcal{N}(\Phi W, \sigma_n^2 I)$. The posterior is:
 
-\[
-p(W|\Phi, Y) = \mathcal{N}(W; \mu, \Sigma),
-\]
-\[
-\Sigma = (\sigma_n^{-2} \Phi^\top \Phi + \sigma_p^{-2} I)^{-1},
-\quad
-\mu = \sigma_n^{-2} \Sigma \Phi^\top Y.
-\]
+\subsection*{A.1 Analytic Bayesian Linear Regression}
 
-Predictive distribution for a new input $\phi_*$:
+Given prior $p(W) = \mathcal{N}(0, \sigma_0^2 I_D)$ and likelihood $p(Y|\Phi,W) = \mathcal{N}(\Phi W, \sigma^2 I_N)$, where $\Phi \in \mathbb{R}^{N \times D}$ is the feature matrix and $Y \in \mathbb{R}^{N \times K}$ are targets, the posterior is derived as follows.
 
-\[
-p(y_*|\phi_*, \Phi, Y) = \mathcal{N}(y_*; \phi_*^\top \mu, \phi_*^\top \Sigma \phi_* + \sigma_n^2 I).
-\]
+By Bayes' rule:
+\begin{equation}
+p(W|Y,\Phi) \propto p(Y|\Phi,W) p(W)
+\end{equation}
 
-\subsection*{A.2 Mean-Field Variational Inference (Diagonal)}
-We approximate the posterior with $q(W) = \prod_{i,j} \mathcal{N}(w_{ij}; m_{ij}, s_{ij}^2)$. The evidence lower bound (ELBO) is:
+The log-posterior (up to constants):
+\begin{equation}
+\log p(W|Y,\Phi) = -\frac{1}{2\sigma^2}\|Y - \Phi W\|_F^2 - \frac{1}{2\sigma_0^2}\|W\|_F^2 + \text{const}
+\end{equation}
 
-\[
-\text{ELBO} = \mathbb{E}_{q(W)}[\log p(Y|\Phi, W)] - \text{KL}(q(W) \| p(W)).
-\]
+Completing the square, the posterior precision matrix:
+\begin{equation}
+\Lambda = \frac{1}{\sigma^2}\Phi^T \Phi + \frac{1}{\sigma_0^2} I_D
+\end{equation}
 
-The likelihood term is Gaussian, and the KL divergence between two Gaussians has closed form. We optimize $m_{ij}, s_{ij}$ via gradient ascent.
+Posterior covariance and mean:
+\begin{align}
+\Sigma_{\text{post}} &= \Lambda^{-1} = \left(\frac{\Phi^T \Phi}{\sigma^2} + \frac{I_D}{\sigma_0^2}\right)^{-1} \\
+\mu_{\text{post}} &= \Sigma_{\text{post}} \frac{\Phi^T Y}{\sigma^2}
+\end{align}
 
-\subsection*{A.3 Mean-Field Variational Inference (Full Covariance)}
-We parameterize $q(W) = \mathcal{N}(\text{vec}(W); \mathbf{m}, \mathbf{L}\mathbf{L}^\top)$, where $\mathbf{L}$ is a lower-triangular Cholesky factor. The ELBO is similar, but the covariance matrix is full. The KL divergence involves the log-determinant of $\mathbf{L}\mathbf{L}^\top$, which is computed as $2\sum_i \log L_{ii}$.
+For prediction at new input $\phi \in \mathbb{R}^D$:
+\begin{align}
+p(y|\phi, D) &= \int p(y|\phi, W) p(W|D) dW \\
+&= \mathcal{N}(\phi^T \mu_{\text{post}}, \sigma^2 + \phi^T \Sigma_{\text{post}} \phi)
+\end{align}
+
+The predictive variance decomposes into aleatoric ($\sigma^2$) and epistemic ($\phi^T \Sigma_{\text{post}} \phi$) components.
+
+\subsection*{A.2 Diagonal Mean-Field Variational Inference}
+
+Variational family: $q(W) = \prod_{ij} \mathcal{N}(w_{ij} | m_{ij}, s_{ij}^2)$ with parameters $M \in \mathbb{R}^{D \times K}$ (means) and $S \in \mathbb{R}^{D \times K}$ (standard deviations).
+
+\textbf{Expected log-likelihood (analytic computation):}
+
+For likelihood $p(Y|\Phi, W) = \mathcal{N}(\Phi W, \sigma^2 I)$:
+\begin{align}
+\mathbb{E}_q[\log p(Y|\Phi, W)] &= -\frac{N K}{2}\log(2\pi\sigma^2) - \frac{1}{2\sigma^2}\mathbb{E}_q[\|Y - \Phi W\|_F^2]
+\end{align}
+
+Expanding the squared Frobenius norm:
+\begin{align}
+\mathbb{E}_q[\|Y - \Phi W\|_F^2] &= \mathbb{E}_q[\text{Tr}((Y - \Phi W)(Y - \Phi W)^T)] \\
+&= \text{Tr}(\mathbb{E}_q[(Y - \Phi W)(Y - \Phi W)^T])
+\end{align}
+
+Using linearity of expectation:
+\begin{align}
+\mathbb{E}_q[\|Y - \Phi W\|_F^2] &= \|Y\|_F^2 - 2\text{Tr}(Y^T \Phi \mathbb{E}_q[W]) + \text{Tr}(\mathbb{E}_q[W^T \Phi^T \Phi W])
+\end{align}
+
+Since $\mathbb{E}_q[W] = M$:
+\begin{equation}
+\mathbb{E}_q[\|Y - \Phi W\|_F^2] = \|Y\|_F^2 - 2\text{Tr}(Y^T \Phi M) + \text{Tr}(\mathbb{E}_q[W^T \Phi^T \Phi W])
+\end{equation}
+
+For the second moment:
+\begin{align}
+\mathbb{E}_q[W^T \Phi^T \Phi W] &= \mathbb{E}_q[\sum_{k=1}^K w_k^T \Phi^T \Phi w_k] \\
+&= \sum_{k=1}^K \mathbb{E}_q[w_k^T \Phi^T \Phi w_k] \\
+&= \sum_{k=1}^K (\text{Tr}(\Phi^T \Phi \text{Cov}(w_k)) + m_k^T \Phi^T \Phi m_k)
+\end{align}
+
+For diagonal covariance $\text{Cov}(w_k) = \text{diag}(s_{1k}^2, \ldots, s_{Dk}^2)$:
+\begin{align}
+\text{Tr}(\Phi^T \Phi \text{diag}(s_k^2)) &= \sum_{d=1}^D s_{dk}^2 \sum_{n=1}^N \phi_{nd}^2 \\
+&= \sum_{d=1}^D s_{dk}^2 \|\Phi_{\cdot d}\|^2
+\end{align}
+
+Therefore:
+\begin{equation}
+\mathbb{E}_q[\|Y - \Phi W\|_F^2] = \|Y - \Phi M\|_F^2 + \sum_{k=1}^K \sum_{d=1}^D s_{dk}^2 \|\Phi_{\cdot d}\|^2
+\end{equation}
+
+This can be computed efficiently as:
+\begin{equation}
+\text{variance term} = \sum_{n,d,k} \phi_{nd}^2 s_{dk}^2 = \text{sum}((\Phi^2) (S^2))
+\end{equation}
+
+\textbf{KL divergence:}
+
+For each weight element with $q(w_{dk}) = \mathcal{N}(m_{dk}, s_{dk}^2)$ and prior $p(w_{dk}) = \mathcal{N}(0, \sigma_0^2)$:
+\begin{equation}
+\text{KL}(q(w_{dk})\|p(w_{dk})) = \frac{1}{2}\left(\frac{s_{dk}^2}{\sigma_0^2} + \frac{m_{dk}^2}{\sigma_0^2} - 1 - \log\frac{s_{dk}^2}{\sigma_0^2}\right)
+\end{equation}
+
+Summing over all $D \times K$ weight elements:
+\begin{equation}
+\text{KL}(q\|p) = \frac{1}{2}\sum_{d=1}^D\sum_{k=1}^K\left(\frac{s_{dk}^2 + m_{dk}^2}{\sigma_0^2} - 1 - \log s_{dk}^2 + \log \sigma_0^2\right)
+\end{equation}
+
+\textbf{ELBO optimization:}
+\begin{equation}
+\mathcal{L} = \mathbb{E}_q[\log p(Y|\Phi, W)] - \text{KL}(q\|p)
+\end{equation}
+
+Gradient-based optimization (Adam) maximizes ELBO w.r.t. $M$ and $\log S$ (parameterizing variances in log-space ensures positivity).
+
+\subsection*{A.3 Full Covariance MFVI}
+
+For each output dimension $k$, variational posterior: $q(w_k) = \mathcal{N}(m_k, \Sigma_k)$ where $w_k \in \mathbb{R}^D$.
+
+To ensure $\Sigma_k \succ 0$, parameterize via Cholesky: $\Sigma_k = L_k L_k^T$ where $L_k \in \mathbb{R}^{D \times D}$ is lower triangular.
+
+\textbf{Reparameterization:}
+\begin{equation}
+w_k = m_k + L_k \epsilon, \quad \epsilon \sim \mathcal{N}(0, I_D)
+\end{equation}
+
+\textbf{KL divergence:}
+
+For multivariate Gaussians:
+\begin{equation}
+\text{KL}(\mathcal{N}(\mu_q, \Sigma_q) \| \mathcal{N}(\mu_p, \Sigma_p)) = \frac{1}{2}\left[\text{Tr}(\Sigma_p^{-1}\Sigma_q) + (\mu_p - \mu_q)^T \Sigma_p^{-1}(\mu_p - \mu_q) - D + \log\frac{|\Sigma_p|}{|\Sigma_q|}\right]
+\end{equation}
+
+For our case with $\mu_p = 0$, $\Sigma_p = \sigma_0^2 I_D$:
+\begin{align}
+\text{KL}(q(w_k)\|p(w_k)) &= \frac{1}{2}\left[\frac{\text{Tr}(\Sigma_k)}{\sigma_0^2} + \frac{m_k^T m_k}{\sigma_0^2} - D + \log\frac{\sigma_0^{2D}}{|\Sigma_k|}\right] \\
+&= \frac{1}{2}\left[\frac{\text{Tr}(\Sigma_k)}{\sigma_0^2} + \frac{m_k^T m_k}{\sigma_0^2} - D - \log|\Sigma_k| + D\log\sigma_0^2\right]
+\end{align}
+
+Using Cholesky parameterization:
+\begin{equation}
+\log|\Sigma_k| = \log|L_k L_k^T| = 2\log|L_k| = 2\sum_{i=1}^D \log |L_{k,ii}|
+\end{equation}
+
+To ensure positive diagonal elements, parameterize: $L_{k,ii} = \exp(\ell_{k,ii})$ where $\ell_{k,ii}$ are learnable parameters.
+
+Total KL for all outputs:
+\begin{equation}
+\text{KL}(q\|p) = \sum_{k=1}^K \text{KL}(q(w_k)\|p(w_k))
+\end{equation}
+
+% \subsection*{A.1 Analytic Gaussian Inference}
+% Let the feature matrix be $\Phi \in \mathbb{R}^{N \times D}$, targets $Y \in \mathbb{R}^{N \times K}$, and weights $W \in \mathbb{R}^{D \times K}$. Assume prior $W \sim \mathcal{N}(0, \sigma_p^2 I)$ and likelihood $Y \sim \mathcal{N}(\Phi W, \sigma_n^2 I)$. The posterior is:
+
+% \[
+% p(W|\Phi, Y) = \mathcal{N}(W; \mu, \Sigma),
+% \]
+% \[
+% \Sigma = (\sigma_n^{-2} \Phi^\top \Phi + \sigma_p^{-2} I)^{-1},
+% \quad
+% \mu = \sigma_n^{-2} \Sigma \Phi^\top Y.
+% \]
+
+% Predictive distribution for a new input $\phi_*$:
+
+% \[
+% p(y_*|\phi_*, \Phi, Y) = \mathcal{N}(y_*; \phi_*^\top \mu, \phi_*^\top \Sigma \phi_* + \sigma_n^2 I).
+% \]
+
+% \subsection*{A.2 Mean-Field Variational Inference (Diagonal)}
+% We approximate the posterior with $q(W) = \prod_{i,j} \mathcal{N}(w_{ij}; m_{ij}, s_{ij}^2)$. The evidence lower bound (ELBO) is:
+
+% \[
+% \text{ELBO} = \mathbb{E}_{q(W)}[\log p(Y|\Phi, W)] - \text{KL}(q(W) \| p(W)).
+% \]
+
+% The likelihood term is Gaussian, and the KL divergence between two Gaussians has closed form. We optimize $m_{ij}, s_{ij}$ via gradient ascent.
+
+% \subsection*{A.3 Mean-Field Variational Inference (Full Covariance)}
+% We parameterize $q(W) = \mathcal{N}(\text{vec}(W); \mathbf{m}, \mathbf{L}\mathbf{L}^\top)$, where $\mathbf{L}$ is a lower-triangular Cholesky factor. The ELBO is similar, but the covariance matrix is full. The KL divergence involves the log-determinant of $\mathbf{L}\mathbf{L}^\top$, which is computed as $2\sum_i \log L_{ii}$.
 
 \subsection*{A.4 Heteroscedastic Noise Modeling (Novel Extension)}
 
-For the novel extension, we model both aleatoric (data) and epistemic (model) uncertainty separately. We extend the last-layer Bayesian linear regression to be heteroscedastic by parameterizing both the mean and variance of the predictive distribution.
+For the novel extension, we model both aleatoric (data) and epistemic (model) uncertainty separately. We extend the last-layer Bayesian linear regression to be heteroscedastic by parameterizing both the mean and variance of the predictive distribution. Some of the derivations are similar to the ones in A.1-A.3, but are repeated for consistency of the report.
 
 \subsubsection*{Model Specification}
 
