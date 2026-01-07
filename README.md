@@ -38,7 +38,7 @@ Novel Extension:
 ## Project Structure
 
 ```
-active_learning_project/
+reproducing_DL/
 ├── main.py                    # Main script to run complete project
 ├── config.py                  # Configuration and constants
 ├── models.py                  # Model definitions (CNN architectures)
